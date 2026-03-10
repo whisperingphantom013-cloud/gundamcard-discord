@@ -1,12 +1,11 @@
-import os, json, time, hashlib, requests, feedparser, re
+import os, json, time, hashlib, requests, re
 from datetime import datetime, timezone
 
 DISCORD_WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 TWITTER_USERNAME = "GUNDAM_GCG_JP"
 RSS_SOURCES = [
-    f"https://nitter.poast.org/{TWITTER_USERNAME}/rss",
-    f"https://nitter.privacydev.net/{TWITTER_USERNAME}/rss",
-    f"https://nitter.lunar.icu/{TWITTER_USERNAME}/rss",
+    f"https://rsshub.app/twitter/user/{TWITTER_USERNAME}",
+    f"https://rsshub.app/x/user/{TWITTER_USERNAME}",
 ]
 SENT_CACHE_FILE = "sent_tweets_cache.json"
 
@@ -24,21 +23,28 @@ def fetch_tweets():
     headers = {"User-Agent": "Mozilla/5.0"}
     for url in RSS_SOURCES:
         try:
-            r = requests.get(url, headers=headers, timeout=10)
+            print(f"🔍 ลอง: {url}")
+            r = requests.get(url, headers=headers, timeout=15)
+            print(f"   Status: {r.status_code}")
             if r.status_code != 200:
                 continue
+            import feedparser
             feed = feedparser.parse(r.content)
             if not feed.entries:
+                print("   ไม่พบ entries")
                 continue
             tweets = []
             for e in feed.entries[:10]:
                 tid = hashlib.md5(e.get("id", e.link).encode()).hexdigest()
-                link = re.sub(r'https?://[^/]+', 'https://x.com', e.get("link", ""))
-                tweets.append({"id": tid, "summary": e.get("summary", e.get("title", "")), "link": link})
-            print(f"✅ ดึงได้ {len(tweets)} ทวีตจาก {url}")
+                tweets.append({
+                    "id": tid,
+                    "summary": e.get("summary", e.get("title", "")),
+                    "link": f"https://x.com/{TWITTER_USERNAME}"
+                })
+            print(f"   ✅ พบ {len(tweets)} ทวีต")
             return tweets
         except Exception as ex:
-            print(f"❌ {url} → {ex}")
+            print(f"   ❌ {ex}")
     return []
 
 def clean_html(text):
@@ -62,9 +68,10 @@ def send_to_discord(tweet):
         }]
     }
     r = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+    print(f"   Discord: {r.status_code}")
     return r.status_code in (200, 204)
 
-sent_ids = load_cache()
+sent_ids = set()  # ล้าง cache เพื่อทดสอบ
 tweets = fetch_tweets()
 new_count = 0
 for tweet in reversed(tweets):
